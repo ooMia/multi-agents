@@ -1,5 +1,7 @@
 # python project
 .venv/
+__pycache__/
+.pytest_cache/
 
 # uv project
 .ruff_cache/
