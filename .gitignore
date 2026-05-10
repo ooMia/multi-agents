@@ -1,0 +1,5 @@
+# python project
+.venv/
+
+# uv project
+.ruff_cache/
