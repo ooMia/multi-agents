@@ -1,3 +1,6 @@
+# IDE
+.vscode/
+
 # python project
 .venv/
 __pycache__/

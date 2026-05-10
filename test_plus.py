@@ -1,6 +1,5 @@
-def func(x: int, y: int):
-    return x + y
+from model import Result, plus
 
 
 def test_answer():
-    assert func(1, 1) == 2
+    assert plus(1, 1).value == 2
