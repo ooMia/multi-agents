@@ -10,7 +10,7 @@ ollama ps
 uv format --preview-features format
 uv run main.py
 
-pytest
+pytest --lf
 ```
 
 ```sh
