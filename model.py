@@ -1,103 +1,123 @@
-import ollama
+from typing import Optional
 from pydantic import BaseModel, Field
-from typing import Optional, Callable, Any
-from tools.math import add, subtract, multiply, divide
+from ollama import Client, ChatResponse
+from utility import (
+    parse_arguments,
+    add,
+    subtract,
+    multiply,
+    divide,
+    typesafe_call,
+)
 
 
 class Result(BaseModel):
-    value: Optional[float] = Field(default=None, description="도구 호출 결과값")
+    value: Optional[float] = Field(
+        default=None,
+        description="최종 계산된 도구 호출 결과값. 계산할 수 없는 경우 None입니다.",
+    )
 
 
-# --- 🛡️ 3. 방어적 인자 파서 (Resilience) ---
-def parse_and_execute(func: Callable, raw_args: dict[str, Any]) -> Optional[float]:
-    """Ollama의 중첩/변형된 인자를 파싱하여 안전하게 함수를 실행합니다."""
-    args = []
-    for v in raw_args.values():
-        if v and (isinstance(v, str) or isinstance(v, float)):
-            args.append(float(v))
-    result = func(*args) if args else None
-    print(f"{func.__name__}({raw_args}) = {result}")
-    return result
+class Calculator:
+    """계산기 에이전트 클래스"""
 
+    def __init_llama(self):
+        self.model = "llama3.2"
 
-def parse_numbers(message: str) -> list[str]:
-    import re
+    def __init_qwen(self):
+        self.model = "qwen3.5:0.8b"
 
-    numbers = re.findall(r"[+-]?(?:\d*\.\d+|\d+)", message)
-    print(numbers)
-    return numbers
+    def __init__(self, think=False):
+        self.__think = think
+        if think:
+            self.__init_qwen()
+        else:
+            self.__init_llama()
 
+        self.__SYSTEM_PROMPT = """
+CRITICAL RULES:
+- ALWAYS call tools with arguments 'x' and 'y'.
+- PRESERVE the exact data type and precision. If a number has decimals (e.g., '5.2'), NEVER drop them.
+- NEVER invent or substitute numbers. Only use digits present in the query, unless translating natural language math terms listed below.
 
-def chat_with_tools(message: str) -> Result:
-    client = ollama.Client()
-    available_tools = {
-        "add": add,
-        "subtract": subtract,
-        "multiply": multiply,
-        "divide": divide,
-    }
-    SYSTEM_PROMPT = """
-RULES
-- 'INF' is an infinite state of a number.
-- Expressions with 'inf', ALWAYS returns None.
-- ALWAYS use the best tool which mets user's requirements.
-- NEVER compute answers yourself.
-- NEVER round or rewrite numbers.
+CRITICAL RULES FOR INFINITY:
+- The following tokens represent positive infinity (+infinity): 'inf', '∞', '무한대', '無限大'.
+    -> If any of these appear, you MUST pass 'INF' as the argument value.
+- The following tokens represent negative infinity (-infinity): '-inf', '-∞', '마이너스 무한대'.
+    -> If any of these appear, you MUST pass '-INF' as the argument value.
+- NEVER drop, ignore, or strip unicode symbols like '∞'. They are critical mathematical tokens.
+- Example: "∞ 더하기 -8는?" -> The query starts with '∞'. Do NOT drop it. Call tool with {'x': 'INF', 'y': '-8'}.
+- NEVER substitute infinity tokens with random normal numbers or 0. You must explicitly use 'INF' or '-INF'.
+
+CRITICAL MAPPING & OPERATOR RULES:
+- For division ("A / B"), ALWAYS set x='A' and y='B'. Formula: x / y = A / B.
+- For addition ("A + B"), call 'add' with x='A', y='B'.
+- For subtraction ("A - B"), ALWAYS set x='A' and y='B'. Formula: x - y = A - B.
+- For multiplication ("A * B"), call 'multiply' with x='A', y='B'.
+
+NATURAL LANGUAGE PARSING RULES:
+- English "Half of X" -> Call 'divide' with x='X', y='2' (e.g., "half of 5.2" -> x='5.2', y='2')
+- English "Divide X in half" -> Call 'divide' with x='X', y='2'
+- Korean "X의 절반" -> Call 'divide' with x='X', y='2'
+- Korean "X를 반으로" -> Call 'divide' with x='X', y='2'
+- Korean "X의 반" -> Call 'divide' with x='X', y='2'
+
+- English "Twice of X" -> Call 'multiply' with x='X', y='2' (e.g., "twice of -2.125" -> x='-2.125', y='2')
+- Korean "X의 두 배" -> Call 'multiply' with x='X', y='2'
+
+- English "A quarter of X" -> Call 'divide' with x='X', y='4'
+- Korean "X의 4분의 1" -> Call 'divide' with x='X', y='4'
 """
 
-    messages = [
-        {"role": "system", "content": SYSTEM_PROMPT},
-        {"role": "user", "content": f"normal numbers: {parse_numbers(message)}"},
-        {"role": "user", "content": f"original query: {message}"},
-    ]
+        self.tools_list = [add, subtract, multiply, divide]
+        self.tools_map = {func.__name__: func for func in self.tools_list}
 
-    # [Step 1] 도구 호출 (format 생략)
-    response = client.chat(
-        model="llama3.2",
-        messages=messages,
-        tools=[*available_tools.values()],
-    )
+        self.__context = [{"role": "system", "content": self.__SYSTEM_PROMPT}]
+        self.__client = Client()
 
-    # [Step 2] 방어적 인자 파싱 및 실행
-    if response.message.tool_calls:
-        messages.append(response.message)
-        for call in response.message.tool_calls:
-            func = available_tools.get(call.function.name)
-            if func:
-                res = parse_and_execute(func, call.function.arguments)
-                print(res)
-                messages.append(
-                    {
-                        "role": "tool",
-                        "content": Result(value=res).model_dump_json(),
-                        "tool_name": call.function.name,
-                    }
-                )
+    def __chat(self, format_schema: Optional[type[BaseModel]] = None) -> ChatResponse:
+        return self.__client.chat(
+            model=self.model,
+            messages=self.__context,
+            format=format_schema.model_json_schema() if format_schema else None,
+            think=self.__think,
+            tools=self.tools_list,
+        )
 
-    # [Step 3] 최종 결과 생성 (Ollama Native JSON Schema 강제)
-    final_response = client.chat(
-        model="llama3.2",
-        messages=messages,
-        format=Result.model_json_schema(),
-        tools=[*available_tools.values()],
-    )
+    def __tool_calls(self) -> list[dict[str, str]]:
+        response = self.__chat()
+        contexts = []
+        if calls := response.message.tool_calls:
+            for call in calls:
+                func_name = call.function.name
+                if func := self.tools_map.get(func_name):
+                    print(call.function.arguments)
+                    args = parse_arguments(func, dict(call.function.arguments))
+                    result = typesafe_call(func, args)
+                    contexts.append(
+                        {
+                            "role": "tool",
+                            "content": Result(value=result).model_dump_json(),
+                            "name": func_name,
+                        }
+                    )
+        return contexts
 
-    # Pydantic v2 기본 기능으로 즉시 객체화 반환
-    return Result.model_validate_json(final_response.message.content)
+    def calculate(self, query: str) -> Optional[float]:
+        self.__context.append({"role": "user", "content": f"{query}"})
+        contexts = self.__tool_calls()
+
+        for msg in contexts:
+            self.__context.append(dict(msg))
+        import json
+
+        try:
+            if result_json := contexts[0].get("content"):
+                value = json.loads(result_json).get("value")
+                return float(value)
+        except:
+            return None
 
 
 def execute_math(expression: str) -> Optional[float]:
-    result_obj = chat_with_tools(expression)
-    return result_obj.value
-
-
-if __name__ == "__main__":
-    # print(f"✅ Final Value: {execute_math('15 더하기 27은?')}")
-    # print(f"✅ Final Value: {execute_math('100을 4로 나누면?')}")
-    print(f"✅ Final Value: {execute_math(f'4를 절반으로 나누면?')}")
-    print(f"✅ Final Value: {execute_math(f'4를 절반은?')}")
-    print(f"✅ Final Value: {execute_math(f'-2의 두 배는?')}")
-    print(f"✅ Final Value: {execute_math(f'양의 무한대를 절반으로 나누면?')}")
-    print(f"✅ Final Value: {execute_math(f'무한대에 0을 더하면 어떻게 돼?')}")
-    print(f"✅ Final Value: {execute_math(f'{float("-inf")} 더하기 0은?')}")
-    print(f"✅ Final Value: {execute_math(f'무한대 더하기 0은?')}")
+    return Calculator(think=False).calculate(expression)

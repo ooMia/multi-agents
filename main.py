@@ -1,6 +1,7 @@
-def main():
-    print("Hello from calculator!")
-
+from model import Calculator
 
 if __name__ == "__main__":
-    main()
+    _calculator = Calculator()
+    calculate = _calculator.calculate
+
+    print(calculate("無限大 더하기 -8는?"))

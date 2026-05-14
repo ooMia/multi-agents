@@ -4,7 +4,8 @@
 source .venv/bin/activate
 uv sync
 
-OLLAMA_CONTEXT_LENGTH=2048 ollama serve
+ollama create llama3.2 -f ./Modelfile
+ollama serve
 ollama ps
 
 uv format --preview-features format
