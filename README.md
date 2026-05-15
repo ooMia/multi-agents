@@ -4,7 +4,8 @@
 source .venv/bin/activate
 uv sync
 
-ollama create llama3.2 -f ./Modelfile
+ollama create calc -f ./Modelfile
+ollama list
 ollama serve
 ollama ps
 
@@ -12,6 +13,11 @@ uv format --preview-features format
 uv run main.py
 
 pytest --lf
+pytest -m xfail
+pytest -m fuzz
+
+ollama create calc -f ./Modelfile && pytest -m fuzz --lf
+ollama create calc -f ./Modelfile && pytest -m "not slow"
 ```
 
 ```sh

@@ -1,14 +1,10 @@
+import math
 from typing import Optional
+
+from ollama import ChatResponse, Client
 from pydantic import BaseModel, Field
-from ollama import Client, ChatResponse
-from utility import (
-    parse_arguments,
-    add,
-    subtract,
-    multiply,
-    divide,
-    typesafe_call,
-)
+
+from utility import parse_arguments, typesafe_call
 
 
 class Result(BaseModel):
@@ -21,66 +17,22 @@ class Result(BaseModel):
 class Calculator:
     """계산기 에이전트 클래스"""
 
-    def __init_llama(self):
-        self.model = "llama3.2"
-
-    def __init_qwen(self):
-        self.model = "qwen3.5:0.8b"
-
-    def __init__(self, think=False):
-        self.__think = think
-        if think:
-            self.__init_qwen()
-        else:
-            self.__init_llama()
-
-        self.__SYSTEM_PROMPT = """
-CRITICAL RULES:
-- ALWAYS call tools with arguments 'x' and 'y'.
-- PRESERVE the exact data type and precision. If a number has decimals (e.g., '5.2'), NEVER drop them.
-- NEVER invent or substitute numbers. Only use digits present in the query, unless translating natural language math terms listed below.
-
-CRITICAL RULES FOR INFINITY:
-- The following tokens represent positive infinity (+infinity): 'inf', '∞', '무한대', '無限大'.
-    -> If any of these appear, you MUST pass 'INF' as the argument value.
-- The following tokens represent negative infinity (-infinity): '-inf', '-∞', '마이너스 무한대'.
-    -> If any of these appear, you MUST pass '-INF' as the argument value.
-- NEVER drop, ignore, or strip unicode symbols like '∞'. They are critical mathematical tokens.
-- Example: "∞ 더하기 -8는?" -> The query starts with '∞'. Do NOT drop it. Call tool with {'x': 'INF', 'y': '-8'}.
-- NEVER substitute infinity tokens with random normal numbers or 0. You must explicitly use 'INF' or '-INF'.
-
-CRITICAL MAPPING & OPERATOR RULES:
-- For division ("A / B"), ALWAYS set x='A' and y='B'. Formula: x / y = A / B.
-- For addition ("A + B"), call 'add' with x='A', y='B'.
-- For subtraction ("A - B"), ALWAYS set x='A' and y='B'. Formula: x - y = A - B.
-- For multiplication ("A * B"), call 'multiply' with x='A', y='B'.
-
-NATURAL LANGUAGE PARSING RULES:
-- English "Half of X" -> Call 'divide' with x='X', y='2' (e.g., "half of 5.2" -> x='5.2', y='2')
-- English "Divide X in half" -> Call 'divide' with x='X', y='2'
-- Korean "X의 절반" -> Call 'divide' with x='X', y='2'
-- Korean "X를 반으로" -> Call 'divide' with x='X', y='2'
-- Korean "X의 반" -> Call 'divide' with x='X', y='2'
-
-- English "Twice of X" -> Call 'multiply' with x='X', y='2' (e.g., "twice of -2.125" -> x='-2.125', y='2')
-- Korean "X의 두 배" -> Call 'multiply' with x='X', y='2'
-
-- English "A quarter of X" -> Call 'divide' with x='X', y='4'
-- Korean "X의 4분의 1" -> Call 'divide' with x='X', y='4'
-"""
-
-        self.tools_list = [add, subtract, multiply, divide]
+    def __init__(self):
+        self.model = "calc"
+        self.tools_list = [self.add, self.subtract, self.multiply, self.divide]
         self.tools_map = {func.__name__: func for func in self.tools_list}
-
-        self.__context = [{"role": "system", "content": self.__SYSTEM_PROMPT}]
+        self.__context = []
         self.__client = Client()
 
-    def __chat(self, format_schema: Optional[type[BaseModel]] = None) -> ChatResponse:
+    def __chat(
+        self, format_schema: Optional[type[BaseModel]] = None
+    ) -> ChatResponse:
         return self.__client.chat(
             model=self.model,
             messages=self.__context,
-            format=format_schema.model_json_schema() if format_schema else None,
-            think=self.__think,
+            format=(
+                format_schema.model_json_schema() if format_schema else None
+            ),
             tools=self.tools_list,
         )
 
@@ -115,9 +67,84 @@ NATURAL LANGUAGE PARSING RULES:
             if result_json := contexts[0].get("content"):
                 value = json.loads(result_json).get("value")
                 return float(value)
-        except:
+        except TypeError:
             return None
 
+    @staticmethod
+    def add(
+        x: str | float,
+        y: str | float,
+    ) -> Optional[float]:
+        """Adds x and y together (x + y).
 
-def execute_math(expression: str) -> Optional[float]:
-    return Calculator(think=False).calculate(expression)
+        Use this tool whenever the operation between the numbers is addition (+).
+        This includes cases where numbers themselves are negative (e.g., -1 + 1).
+        """
+
+        try:
+            x, y = float(x), float(y)
+            if math.isinf(x) or math.isinf(y):
+                return None
+            res = float(x) + float(y)
+            return res if math.isfinite(res) else None
+        except Exception:
+            return None
+
+    @staticmethod
+    def subtract(
+        x: str | float,
+        y: str | float,
+    ) -> Optional[float]:
+        """Subtracts y from x (x - y).
+
+        Use this tool ONLY when the operation between the numbers is subtraction (-).
+        DO NOT use this tool for addition queries just because a number starts with a minus sign (e.g., '-1 + 1').
+        """
+
+        try:
+            x, y = float(x), float(y)
+            if math.isinf(x) or math.isinf(y):
+                return None
+            res = float(x) - float(y)
+            return res if math.isfinite(res) else None
+        except Exception:
+            return None
+
+    @staticmethod
+    def multiply(
+        x: str | float,
+        y: str | float,
+    ) -> Optional[float]:
+        """Multiplies two numbers (x * y)."""
+        try:
+            x, y = float(x), float(y)
+            if math.isinf(x) or math.isinf(y):
+                return None
+            res = float(x) * float(y)
+            return res if math.isfinite(res) else None
+        except Exception:
+            return None
+
+    @staticmethod
+    def divide(
+        x: str | float,
+        y: str | float,
+    ) -> Optional[float]:
+        """
+        'x' is a dividend and 'y' is a divisor.
+        Divides the dividend by the divisor (dividend / divisor).
+        - dividend: The number to be divided.
+        - divisor: The number to divide by.
+        Returns None if divisor is 0.
+        """
+
+        try:
+            x, y = float(x), float(y)
+            if math.isinf(x) or math.isinf(y):
+                return None
+            if float(y) == 0.0:
+                return None
+            res = float(x) / float(y)
+            return res if math.isfinite(res) else None
+        except Exception:
+            return None
