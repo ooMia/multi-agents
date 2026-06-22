@@ -36,3 +36,7 @@ def typesafe_call(func, kwargs):
         return func(**kwargs)
     except ValueError:
         return None
+
+
+def log_calculate(func_name: str, x: str, y: str, result: float | None):
+    return f"{func_name}({x},{y})={result}"

@@ -1,10 +1,10 @@
+import json
 import math
 from typing import Optional
 
 from ollama import ChatResponse, Client
 from pydantic import BaseModel, Field
-
-from utility import parse_arguments, typesafe_call
+from utility import log_calculate, parse_arguments, typesafe_call
 
 
 class Result(BaseModel):
@@ -21,6 +21,7 @@ class Calculator:
         self.model = "calc"
         self.tools_list = [self.add, self.subtract, self.multiply, self.divide]
         self.tools_map = {func.__name__: func for func in self.tools_list}
+        self.__log = {}
         self.__context = []
         self.__client = Client()
 
@@ -43,9 +44,11 @@ class Calculator:
             for call in calls:
                 func_name = call.function.name
                 if func := self.tools_map.get(func_name):
-                    print(call.function.arguments)
                     args = parse_arguments(func, dict(call.function.arguments))
                     result = typesafe_call(func, args)
+                    self.__log["result"] = log_calculate(
+                        func_name, args["x"], args["y"], result
+                    )
                     contexts.append(
                         {
                             "role": "tool",
@@ -57,11 +60,9 @@ class Calculator:
 
     def calculate(self, query: str) -> Optional[float]:
         self.__context.append({"role": "user", "content": f"{query}"})
+        self.__log["query"] = query
         contexts = self.__tool_calls()
-
-        for msg in contexts:
-            self.__context.append(dict(msg))
-        import json
+        print(self.__log)
 
         try:
             if result_json := contexts[0].get("content"):
@@ -147,4 +148,5 @@ class Calculator:
             res = float(x) / float(y)
             return res if math.isfinite(res) else None
         except Exception:
+            return None
             return None

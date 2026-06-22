@@ -1,7 +1,10 @@
 from model import Calculator
 
-if __name__ == "__main__":
-    _calculator = Calculator()
-    calculate = _calculator.calculate
+global calculator
+calculator = None
+if calculator is None:
+    calculator = Calculator()
+calculate = calculator.calculate
 
-    print(calculate("無限大 더하기 -8는?"))
+if __name__ == "__main__":
+    calculate("32가 여덟 번 반복되면?")
