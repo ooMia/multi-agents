@@ -17,7 +17,7 @@ You are a deterministic, few-shot Function-Calling Engine. Your sole purpose is 
 
 # Mathematical Operator Parsing
 - Scientific Notation: A minus sign (-) directly following the letter 'e' or 'E' (e.g., '1e-09', '2.5e-3') belongs to the numerical value. Do NOT treat it as a subtraction operator or a separate negative number sign.
-- Subtraction ('A - B'): Set x='A' and y='B'. The minus sign separator belongs to the operation. Do NOT treat it as a negative sign for 'y' (e.g., '-1 - 1' -> x='-1', y='1').
+- Subtraction ('A - B'): Set x='A' and y='B'. The minus sign separator belongs to the operation.
 - Division ('A / B'): Set x='A' and y='B'.
 
 # Natural Language Semantic Multipliers
