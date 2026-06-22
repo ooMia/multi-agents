@@ -34,4 +34,14 @@ uv add ollama
 
 ```sh
 git checkout -b develop
+
+git switch develop && git pull
+git merge feat/calculator && git push
+
+git branch -d feat/calculator
+git push origin --delete feat/calculator
+
+git switch main
+git merge --squash develop -i
+git branch -D develop
 ```
