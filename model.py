@@ -1,10 +1,12 @@
 import json
 import math
-from typing import Optional
+from types import FunctionType
+from typing import Any, Optional
 
 from ollama import ChatResponse, Client
 from pydantic import BaseModel, Field
-from utility import log_calculate, parse_arguments, typesafe_call
+
+from utility import parse_arguments
 
 
 class Result(BaseModel):
@@ -17,9 +19,18 @@ class Result(BaseModel):
 class Calculator:
     """계산기 에이전트 클래스"""
 
+    @staticmethod
+    def __log_calculate(func_name: str, x: str, y: str, result: float | None):
+        return f"{func_name}({x},{y})={result}"
+
     def __init__(self):
         self.model = "calc"
-        self.tools_list = [self.add, self.subtract, self.multiply, self.divide]
+        self.tools_list: list[FunctionType] = [
+            self.Operation.add,
+            self.Operation.subtract,
+            self.Operation.multiply,
+            self.Operation.divide,
+        ]
         self.tools_map = {func.__name__: func for func in self.tools_list}
         self.__log = {}
         self.__context = []
@@ -43,18 +54,18 @@ class Calculator:
         if calls := response.message.tool_calls:
             for call in calls:
                 func_name = call.function.name
+                args = dict(call.function.arguments)
                 if func := self.tools_map.get(func_name):
-                    args = parse_arguments(func, dict(call.function.arguments))
-                    result = typesafe_call(func, args)
-                    self.__log["result"] = log_calculate(
-                        func_name, args["x"], args["y"], result
-                    )
+                    result = self.Operation.call(func, args)
                     contexts.append(
                         {
                             "role": "tool",
                             "content": Result(value=result).model_dump_json(),
                             "name": func_name,
                         }
+                    )
+                    self.__log["result"] = self.__log_calculate(
+                        func_name, args["x"], args["y"], result
                     )
         return contexts
 
@@ -71,82 +82,97 @@ class Calculator:
         except TypeError:
             return None
 
-    @staticmethod
-    def add(
-        x: str | float,
-        y: str | float,
-    ) -> Optional[float]:
-        """Adds x and y together (x + y).
+    class Operation:
 
-        Use this tool whenever the operation between the numbers is addition (+).
-        This includes cases where numbers themselves are negative (e.g., -1 + 1).
-        """
+        @staticmethod
+        def __typesafe_call(
+            func: FunctionType, kwargs: dict
+        ) -> Optional[float]:
+            try:
+                return func(**kwargs)
+            except ValueError:
+                raise Exception(f"Invalid arguments: {func} {kwargs}")
 
-        try:
-            x, y = float(x), float(y)
-            if math.isinf(x) or math.isinf(y):
+        @staticmethod
+        def call(func: FunctionType, args: dict[str, Any]):
+            args = parse_arguments(func, args)
+            return Calculator.Operation.__typesafe_call(func, args)
+
+        @staticmethod
+        def add(
+            x: float | str,
+            y: float | str,
+        ) -> Optional[float]:
+            """Adds x and y together (x + y).
+
+            Use this tool whenever the operation between the numbers is addition (+).
+            This includes cases where numbers themselves are negative (e.g., -1 + 1).
+            """
+
+            try:
+                x, y = float(x), float(y)
+                if math.isinf(x) or math.isinf(y):
+                    return None
+                res = float(x) + float(y)
+                return res if math.isfinite(res) else None
+            except Exception:
                 return None
-            res = float(x) + float(y)
-            return res if math.isfinite(res) else None
-        except Exception:
-            return None
 
-    @staticmethod
-    def subtract(
-        x: str | float,
-        y: str | float,
-    ) -> Optional[float]:
-        """Subtracts y from x (x - y).
+        @staticmethod
+        def subtract(
+            x: float | str,
+            y: float | str,
+        ) -> Optional[float]:
+            """Subtracts y from x (x - y).
 
-        Use this tool ONLY when the operation between the numbers is subtraction (-).
-        DO NOT use this tool for addition queries just because a number starts with a minus sign (e.g., '-1 + 1').
-        """
+            Use this tool ONLY when the operation between the numbers is subtraction (-).
+            DO NOT use this tool for addition queries just because a number starts with a minus sign (e.g., '-1 + 1').
+            """
 
-        try:
-            x, y = float(x), float(y)
-            if math.isinf(x) or math.isinf(y):
+            try:
+                x, y = float(x), float(y)
+                if math.isinf(x) or math.isinf(y):
+                    return None
+                res = float(x) - float(y)
+                return res if math.isfinite(res) else None
+            except Exception:
                 return None
-            res = float(x) - float(y)
-            return res if math.isfinite(res) else None
-        except Exception:
-            return None
 
-    @staticmethod
-    def multiply(
-        x: str | float,
-        y: str | float,
-    ) -> Optional[float]:
-        """Multiplies two numbers (x * y)."""
-        try:
-            x, y = float(x), float(y)
-            if math.isinf(x) or math.isinf(y):
+        @staticmethod
+        def multiply(
+            x: float | str,
+            y: float | str,
+        ) -> Optional[float]:
+            """Multiplies two numbers (x * y)."""
+            try:
+                x, y = float(x), float(y)
+                if math.isinf(x) or math.isinf(y):
+                    return None
+                res = float(x) * float(y)
+                return res if math.isfinite(res) else None
+            except Exception:
                 return None
-            res = float(x) * float(y)
-            return res if math.isfinite(res) else None
-        except Exception:
-            return None
 
-    @staticmethod
-    def divide(
-        x: str | float,
-        y: str | float,
-    ) -> Optional[float]:
-        """
-        'x' is a dividend and 'y' is a divisor.
-        Divides the dividend by the divisor (dividend / divisor).
-        - dividend: The number to be divided.
-        - divisor: The number to divide by.
-        Returns None if divisor is 0.
-        """
+        @staticmethod
+        def divide(
+            x: float | str,
+            y: float | str,
+        ) -> Optional[float]:
+            """
+            'x' is a dividend and 'y' is a divisor.
+            Divides the dividend by the divisor (dividend / divisor).
+            - dividend: The number to be divided.
+            - divisor: The number to divide by.
+            Returns None if divisor is 0.
+            """
 
-        try:
-            x, y = float(x), float(y)
-            if math.isinf(x) or math.isinf(y):
+            try:
+                x, y = float(x), float(y)
+                if math.isinf(x) or math.isinf(y):
+                    return None
+                if float(y) == 0.0:
+                    return None
+                res = float(x) / float(y)
+                return res if math.isfinite(res) else None
+            except Exception:
                 return None
-            if float(y) == 0.0:
-                return None
-            res = float(x) / float(y)
-            return res if math.isfinite(res) else None
-        except Exception:
-            return None
-            return None

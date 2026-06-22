@@ -29,14 +29,3 @@ def parse_arguments(
         if (v := find_first(raw_args, param_name)) is not None:
             target_args[param_name] = v
     return target_args
-
-
-def typesafe_call(func, kwargs):
-    try:
-        return func(**kwargs)
-    except ValueError:
-        return None
-
-
-def log_calculate(func_name: str, x: str, y: str, result: float | None):
-    return f"{func_name}({x},{y})={result}"

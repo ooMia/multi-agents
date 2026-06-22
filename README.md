@@ -13,6 +13,7 @@ uv format --preview-features format
 uv run main.py
 
 pytest --lf
+pytest -m "not fuzz" --lf
 pytest -m xfail
 pytest -m fuzz
 
@@ -33,6 +34,8 @@ uv add ollama
 ```
 
 ```sh
+git remote add origin https://github.com/ooMia/multi-agents.git
+git fetch origin
 git checkout -b develop
 
 git switch develop && git pull

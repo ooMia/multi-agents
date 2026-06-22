@@ -1,10 +1,10 @@
 from model import Calculator
 
-global calculator
-calculator = None
-if calculator is None:
-    calculator = Calculator()
-calculate = calculator.calculate
+
+def calculate(query: str):
+    return Calculator().calculate(query)
+
 
 if __name__ == "__main__":
-    calculate("32가 여덟 번 반복되면?")
+    answer = calculate("2.5의 절반은?")
+    print(answer)

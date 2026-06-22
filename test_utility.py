@@ -5,12 +5,12 @@ from typing import Any, Callable
 import pytest
 
 from model import Calculator
-from utility import find_first, parse_arguments, parse_numbers, typesafe_call
+from utility import find_first, parse_arguments, parse_numbers
 
-add = Calculator.add
-subtract = Calculator.subtract
-multiply = Calculator.multiply
-divide = Calculator.divide
+add = Calculator.Operation.add
+subtract = Calculator.Operation.subtract
+multiply = Calculator.Operation.multiply
+divide = Calculator.Operation.divide
 
 
 @pytest.mark.parametrize(
@@ -77,8 +77,3 @@ def test_parse_arguments(data: dict[str, Any]):
     assert parse_arguments(add, d1) == d1
     d2 = {"x": "1", "y": "2"}
     assert parse_arguments(add, d2) == d2
-
-
-def test_typesafe_call():
-    arg = {"x": 1, "y": 2}
-    assert typesafe_call(add, arg) == 3

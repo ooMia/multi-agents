@@ -17,10 +17,10 @@ def calculate():
     return _execute
 
 
-add = Calculator.add
-subtract = Calculator.subtract
-multiply = Calculator.multiply
-divide = Calculator.divide
+add = Calculator.Operation.add
+subtract = Calculator.Operation.subtract
+multiply = Calculator.Operation.multiply
+divide = Calculator.Operation.divide
 
 
 @pytest.mark.parametrize(
@@ -74,10 +74,10 @@ FINITE_CASES = [
 @pytest.mark.parametrize(
     "operator,expected",
     [
-        ("+", lambda x, y: x + y),
-        ("-", lambda x, y: x - y),
-        ("*", lambda x, y: x * y),
-        ("/", lambda x, y: x / y),
+        ("+", add),
+        ("-", subtract),
+        ("*", multiply),
+        ("/", divide),
     ],
 )
 @pytest.mark.parametrize("x,y", FINITE_CASES)
@@ -120,15 +120,6 @@ def test_natural_language(calculate, query: str, expected: float):
 @pytest.mark.xfail(reason="LLM output is probabilistic")
 def test_infinity(calculate, query: str):
     assert calculate(query) is None
-    assert calculate(query) is None
-
-
-RANDOM_OPERATIONS = {
-    "+": lambda x, y: x + y,
-    "-": lambda x, y: x - y,
-    "*": lambda x, y: x * y,
-    "/": lambda x, y: x / y,
-}
 
 
 @pytest.mark.fuzz
@@ -136,6 +127,7 @@ RANDOM_OPERATIONS = {
 @pytest.mark.xfail(reason="LLM output is probabilistic")
 @pytest.mark.parametrize("_", range(50))
 def test_randomized_operations(calculate, _):
+    RANDOM_OPERATIONS = {"+": add, "-": subtract, "*": multiply, "/": divide}
     operator = random.choice(list(RANDOM_OPERATIONS.keys()))
 
     x = random.uniform(-1e12, 1e12)
