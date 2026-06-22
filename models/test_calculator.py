@@ -6,7 +6,7 @@ from typing import Callable, Optional
 
 import pytest
 
-from model import Calculator
+from models.calculator import Calculator, Operation
 
 
 @pytest.fixture
@@ -17,10 +17,10 @@ def calculate():
     return _execute
 
 
-add = Calculator.Operation.add
-subtract = Calculator.Operation.subtract
-multiply = Calculator.Operation.multiply
-divide = Calculator.Operation.divide
+add = Operation.add
+subtract = Operation.subtract
+multiply = Operation.multiply
+divide = Operation.divide
 
 
 @pytest.mark.parametrize(

@@ -4,13 +4,13 @@ from typing import Any, Callable
 
 import pytest
 
-from model import Calculator
+from models.calculator import Operation
 from utility import find_first, parse_arguments, parse_numbers
 
-add = Calculator.Operation.add
-subtract = Calculator.Operation.subtract
-multiply = Calculator.Operation.multiply
-divide = Calculator.Operation.divide
+add = Operation.add
+subtract = Operation.subtract
+multiply = Operation.multiply
+divide = Operation.divide
 
 
 @pytest.mark.parametrize(

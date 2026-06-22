@@ -1,8 +1,8 @@
-from model import Calculator
+from models import Calculator
 
 
-def calculate(query: str):
-    return Calculator().calculate(query)
+def calculate(query: str, verbose=True):
+    return Calculator(verbose=verbose).calculate(query)
 
 
 if __name__ == "__main__":
