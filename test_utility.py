@@ -5,7 +5,7 @@ from typing import Any, Callable
 import pytest
 
 from models.calculator import Operation
-from utility import find_first, parse_arguments, parse_numbers
+from utility import find_first, parse_arguments
 
 add = Operation.add
 subtract = Operation.subtract
@@ -45,21 +45,6 @@ def test_none_returns_none(func: Callable):
 def test_divide_by_zero_returns_none(dividend: float):
     with does_not_raise():
         assert divide(dividend, 0) is None
-
-
-@pytest.mark.parametrize(
-    "expression,expected",
-    [
-        ("100.4을 4로 나누면?", [100.4, 4]),
-        ("5를 절반으로 나누면?", [5]),
-        ("5.2의 절반은?", [5.2]),
-        ("-2.125의 두 배는??", [-2.125]),
-        ("양의 무한대를 절반으로 나누면?", []),
-        ("무한대에 0을 더하면 어떻게 돼?", [0]),
-    ],
-)
-def test_parse_numbers(expression: str, expected: list[float]):
-    assert parse_numbers(expression) == expected
 
 
 @pytest.mark.parametrize(

@@ -1,13 +1,5 @@
 import inspect
-import re
 from typing import Any, Callable
-
-
-def parse_numbers(message: str) -> list[float]:
-    numbers = re.findall(r"[+-]?(?:\d*\.\d+|\d+)", message)
-    print(numbers)
-
-    return list(map(float, numbers))
 
 
 def find_first(d: dict[str, Any], target_key: str) -> Any:
