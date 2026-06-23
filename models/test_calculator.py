@@ -61,12 +61,14 @@ def test_divide_by_zero_returns_none(dividend: float):
 
 FINITE_CASES = [
     (0, 0),
-    (5.5, 2.8),
+    (1, 1),
     (-1, 1),
+    (1, -1),
     (-1, -1),
     (15, 27),
-    (1e-9, 1e9),
+    (5.5, 2.8),
     (-99999999, 0.000001),
+    (1e-9, 1e9),
 ]
 
 
@@ -89,6 +91,7 @@ def test_finite_operations(calculate, operator, expected, x: float, y: float):
         assert result == pytest.approx(expected(x, y))
 
 
+@pytest.mark.slow
 @pytest.mark.parametrize(
     "query,expected",
     [
@@ -102,11 +105,11 @@ def test_finite_operations(calculate, operator, expected, x: float, y: float):
         ("What is twice of -2.125??", -4.25),
     ],
 )
-@pytest.mark.slow
 def test_natural_language(calculate, query: str, expected: float):
     assert calculate(query) == expected
 
 
+@pytest.mark.slow
 @pytest.mark.parametrize(
     "query",
     [
@@ -116,7 +119,6 @@ def test_natural_language(calculate, query: str, expected: float):
         "無限大 더하기 -8는?",
     ],
 )
-@pytest.mark.slow
 @pytest.mark.xfail(reason="LLM output is probabilistic")
 def test_infinity(calculate, query: str):
     assert calculate(query) is None
