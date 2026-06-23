@@ -1,6 +1,7 @@
 import math
+import operator
 from types import FunctionType
-from typing import Any, Optional
+from typing import Any, Callable, Optional
 
 from ollama import ChatResponse, Client
 from pydantic import BaseModel, Field
@@ -14,7 +15,7 @@ class Result(BaseModel):
         description="호출 대상 함수 이름.",
     )
     args: dict[str, Any] = Field(
-        default={},
+        default_factory=dict,
         description="함수에 전달된 인자.",
     )
     value: Optional[float] = Field(
@@ -26,10 +27,6 @@ class Result(BaseModel):
 class Calculator:
     """계산기 에이전트 클래스"""
 
-    @staticmethod
-    def __log_calculate(result: Result):
-        return f"{result.func_name}({result.args["x"]},{result.args["y"]})={result.value}"
-
     def __init__(self, verbose: bool = False):
         self.model = "calc"
         self.tools_list: list[FunctionType] = [
@@ -40,117 +37,111 @@ class Calculator:
         ]
         self.tools_map = {func.__name__: func for func in self.tools_list}
         self.verbose = verbose
-        self.__log = {}
-        self.__context = []
-        self.__client = Client()
+        self._context: list[dict[str, str]] = []
+        self._client = Client()
 
-    def __chat(
+    @staticmethod
+    def _format_log(query: str, result: Result) -> str:
+        args_str = ", ".join(f"{v}" for v in result.args.values())
+        return f"[LOG] Query: '{query}' -> {result.func_name}({args_str}) = {result.value}"
+
+    def _chat(
         self, format_schema: Optional[type[BaseModel]] = None
     ) -> ChatResponse:
-        return self.__client.chat(
+        return self._client.chat(
             model=self.model,
-            messages=self.__context,
+            messages=self._context,
             format=(
                 format_schema.model_json_schema() if format_schema else None
             ),
             tools=self.tools_list,
         )
 
-    def __tool_calls(self) -> Optional[Result]:
-        response = self.__chat()
-        if calls := response.message.tool_calls:
-            call = calls[0]
-            func_name = call.function.name
-            args = dict(call.function.arguments)
-            if func := self.tools_map.get(func_name):
-                result = Operation.call(func, args)
-                self.__log["result"] = self.__log_calculate(result)
-                return result
+    def _execute_tool_calls(self) -> Optional[Result]:
+        response = self._chat()
+
+        if not response.message.tool_calls:
+            return None
+
+        call = response.message.tool_calls[0]
+        func_name = call.function.name
+        args = dict(call.function.arguments)
+
+        func = self.tools_map.get(func_name)
+        if not func:
+            return None
+
+        return Operation.call(func, args)
 
     def calculate(self, query: str) -> Optional[float]:
-        self.__context.append({"role": "user", "content": f"{query}"})
-        self.__log["query"] = query
+        self._context.append({"role": "user", "content": query})
 
-        if result := self.__tool_calls():
-            if self.verbose:
-                print(self.__log)
-            return result.value
+        result = self._execute_tool_calls()
+        if not result:
+            return None
+
+        if self.verbose:
+            print(self._format_log(query, result))
+
+        return result.value
 
 
 class Operation:
     @staticmethod
-    def __typesafe_call(func: FunctionType, kwargs: dict) -> Optional[float]:
+    def _safe_execute(
+        x: Any, y: Any, op: Callable[[float, float], float]
+    ) -> Optional[float]:
+        """Helper to safely convert inputs to float and execute math operations."""
         try:
-            return func(**kwargs)
-        except ValueError:
-            raise Exception(f"Invalid arguments: {func} {kwargs}")
+            fx, fy = float(x), float(y)
+            if math.isinf(fx) or math.isinf(fy):
+                return None
+
+            res = op(fx, fy)
+            return res if math.isfinite(res) else None
+        except (ValueError, TypeError, ZeroDivisionError):
+            return None
 
     @staticmethod
     def call(func: FunctionType, args: dict[str, Any]) -> Result:
-        args = parse_arguments(func, args)
-        result = Operation.__typesafe_call(func, args)
-        return Result(func_name=func.__name__, args=args, value=result)
+        parsed_args = parse_arguments(func, args)
+        try:
+            result = func(**parsed_args)
+        except Exception as e:
+            raise ValueError(
+                f"Invalid arguments for {func.__name__}: {parsed_args}"
+            ) from e
+
+        return Result(func_name=func.__name__, args=parsed_args, value=result)
 
     @staticmethod
-    def add(
-        x: float | str,
-        y: float | str,
-    ) -> Optional[float]:
+    def add(x: float | str, y: float | str) -> Optional[float]:
         """Adds x and y together (x + y).
 
         Use this tool whenever the operation between the numbers is addition (+).
-        This includes cases where numbers themselves are negative (e.g., -1 + 1).
+        This includes cases where numbers themselves are negative (e.g. `-A + -B`).
+        DO NOT use this tool for subtraction queries (e.g. `-A - -B`).
         """
 
-        try:
-            x, y = float(x), float(y)
-            if math.isinf(x) or math.isinf(y):
-                return None
-            res = float(x) + float(y)
-            return res if math.isfinite(res) else None
-        except Exception:
-            return None
+        return Operation._safe_execute(x, y, operator.add)
 
     @staticmethod
-    def subtract(
-        x: float | str,
-        y: float | str,
-    ) -> Optional[float]:
+    def subtract(x: float | str, y: float | str) -> Optional[float]:
         """Subtracts y from x (x - y).
 
         Use this tool ONLY when the operation between the numbers is subtraction (-).
-        DO NOT use this tool for addition queries just because a number starts with a minus sign (e.g., '-1 + 1').
+        DO NOT use this tool for addition queries just because a number starts with a minus sign (e.g. `-A + B`).
         """
 
-        try:
-            x, y = float(x), float(y)
-            if math.isinf(x) or math.isinf(y):
-                return None
-            res = float(x) - float(y)
-            return res if math.isfinite(res) else None
-        except Exception:
-            return None
+        return Operation._safe_execute(x, y, operator.sub)
 
     @staticmethod
-    def multiply(
-        x: float | str,
-        y: float | str,
-    ) -> Optional[float]:
+    def multiply(x: float | str, y: float | str) -> Optional[float]:
         """Multiplies two numbers (x * y)."""
-        try:
-            x, y = float(x), float(y)
-            if math.isinf(x) or math.isinf(y):
-                return None
-            res = float(x) * float(y)
-            return res if math.isfinite(res) else None
-        except Exception:
-            return None
+        return Operation._safe_execute(x, y, operator.mul)
 
     @staticmethod
-    def divide(
-        x: float | str,
-        y: float | str,
-    ) -> Optional[float]:
+    def divide(x: float | str, y: float | str) -> Optional[float]:
         """
         'x' is a dividend and 'y' is a divisor.
         Divides the dividend by the divisor (dividend / divisor).
@@ -158,14 +149,4 @@ class Operation:
         - divisor: The number to divide by.
         Returns None if divisor is 0.
         """
-
-        try:
-            x, y = float(x), float(y)
-            if math.isinf(x) or math.isinf(y):
-                return None
-            if float(y) == 0.0:
-                return None
-            res = float(x) / float(y)
-            return res if math.isfinite(res) else None
-        except Exception:
-            return None
+        return Operation._safe_execute(x, y, operator.truediv)
