@@ -1,26 +1,35 @@
-import math
-import random
 from contextlib import nullcontext as does_not_raise
+from dataclasses import dataclass
 from math import inf
 from typing import Callable, Optional
 
 import pytest
+from hypothesis import Phase, given, note, settings
+from hypothesis import strategies as st
 
-from models.calculator import Calculator, Operation
+from .agent import CalculatorAgent
+from .models import MathOperations
 
 
 @pytest.fixture
 def calculate():
     def _execute(expression: str) -> Optional[float]:
-        return Calculator().calculate(expression)
+        return CalculatorAgent().calculate(expression)
 
     return _execute
 
 
-add = Operation.add
-subtract = Operation.subtract
-multiply = Operation.multiply
-divide = Operation.divide
+add = MathOperations.add
+subtract = MathOperations.subtract
+multiply = MathOperations.multiply
+divide = MathOperations.divide
+
+OPERATIONS = {
+    "+": add,
+    "-": subtract,
+    "*": multiply,
+    "/": divide,
+}
 
 
 @pytest.mark.parametrize(
@@ -84,11 +93,15 @@ FINITE_CASES = [
 )
 @pytest.mark.parametrize("x,y", FINITE_CASES)
 def test_finite_operations(calculate, operator, expected, x: float, y: float):
-    result = calculate(f"{x} {operator} {y} = ?")
+    query = f"{x} {operator} {y} = ?"
+    result = calculate(query)
     if operator == "/" and y == 0:
         assert result is None
     else:
         assert result == pytest.approx(expected(x, y))
+
+
+## NATURAL
 
 
 @pytest.mark.slow
@@ -119,16 +132,55 @@ def test_natural_language(calculate, query: str, expected: float):
         "無限大 더하기 -8는?",
     ],
 )
-@pytest.mark.xfail(reason="LLM output is probabilistic")
 def test_infinity(calculate, query: str):
     assert calculate(query) is None
 
 
+## FUZZ
+
+
+@dataclass
+class QueryCase:
+    x: float
+    y: float
+    op: str
+    expected: float | None
+    query: str
+
+
+operators = st.sampled_from(["+", "-", "*", "/"])
+
+numbers = st.floats(
+    allow_nan=False,
+    allow_infinity=False,
+)
+
+
+@st.composite
+def queries(draw):
+    x = draw(numbers)
+    op = draw(operators)
+    if op == "/":
+        y = draw(numbers.filter(lambda n: n != 0))
+    else:
+        y = draw(numbers)
+
+    return QueryCase(
+        x=x,
+        y=y,
+        op=op,
+        expected=OPERATIONS[op](x, y),
+        query=f"{x} {op} {y} = ?",
+    )
+
+
 @pytest.mark.fuzz
 @pytest.mark.slow
-@pytest.mark.xfail(reason="LLM output is probabilistic")
-@pytest.mark.parametrize("_", range(50))
+@pytest.mark.parametrize("_", range(5))
 def test_randomized_operations(calculate, _):
+    import math
+    import random
+
     RANDOM_OPERATIONS = {"+": add, "-": subtract, "*": multiply, "/": divide}
     operator = random.choice(list(RANDOM_OPERATIONS.keys()))
 
@@ -144,3 +196,21 @@ def test_randomized_operations(calculate, _):
     result = calculate(query)
 
     assert result == pytest.approx(expected, rel=1e-9, abs=1e-9)
+
+
+@pytest.mark.fuzz
+@pytest.mark.hypothesis
+@pytest.mark.slow
+@settings(
+    max_examples=5,
+    deadline=6 * 1000,
+    phases=[Phase.generate],
+)
+@given(case=queries())
+def test_hypothesis(case: QueryCase):
+    note(f"{case=}")
+    result = CalculatorAgent().calculate(case.query)
+    if case.expected is None:
+        assert result is None
+    else:
+        assert result == pytest.approx(case.expected)

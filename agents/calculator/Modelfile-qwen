@@ -1,10 +1,10 @@
-# FROM llama3.2
-FROM qwen3.5:2b
+FROM qwen3.5:0.8b-mlx
 
 PARAMETER temperature 0
-PARAMETER top_k 10
-PARAMETER top_p 0.9
+PARAMETER top_k 1
+PARAMETER top_p 1.0
 PARAMETER num_ctx 2048
+PARAMETER num_predict 1024
 
 SYSTEM """
 # Role

@@ -11,9 +11,7 @@ def find_first(d: dict[str, Any], target_key: str) -> Any:
     )
 
 
-def parse_arguments(
-    func: Callable, raw_args: dict[str, Any]
-) -> dict[str, Any]:
+def parse_arguments(func: Callable, raw_args: dict[str, Any]) -> dict[str, Any]:
     """함수 명세를 참조해서 인자 키워드에 맞는 값을 정리합니다."""
     sig = inspect.signature(func)
     target_args = dict()

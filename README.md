@@ -10,15 +10,15 @@ ollama serve
 ollama ps
 
 uv format --preview-features format
-uv run main.py
+uv run -m agents.calculator.agent    
 
 pytest --lf
 pytest -m "not fuzz" --lf
-pytest -m xfail
-pytest -m fuzz
+pytest -m "not hypothesis" --lf
+pytest -s -m fuzz
 
-ollama create calc -f ./Modelfile && pytest -m fuzz --lf
-ollama create calc -f ./Modelfile && pytest -m "not slow"
+ollama create calc -f ./agents/calculator/Modelfile
+ollama create calc-qwen -f ./agents/calculator/Modelfile-qwen
 ```
 
 ```sh
